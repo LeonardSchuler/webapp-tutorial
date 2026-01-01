@@ -236,34 +236,40 @@ npm run format
 
 ### Step 2: Tailwind CSS Setup
 
-**What you'll learn:** Utility-first CSS framework for rapid UI development.
+**What you'll learn:** Utility-first CSS framework for rapid UI development using the official Vite plugin.
 
-**Install dependencies:**
+**Install Tailwind CSS:**
 ```bash
-npm install -D tailwindcss postcss autoprefixer
-npx tailwindcss init -p
+npm install -D tailwindcss @tailwindcss/vite
 ```
+The official Tailwind docs recommend a non-dev (without `-D`) install. However, we stick with the convention that build tools are considered dev dependencies.
 
-**Update `tailwind.config.js`:**
-```javascript
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+**Configure the Vite plugin:**
+
+Create [vite.config.ts](vite.config.ts) with the Tailwind plugin:
+```typescript
+import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [
+    tailwindcss(),
   ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}
+})
+```
+Add the vite.config.ts file to tsconfig.json to enable linting on the file:
+```json
+  "include": [
+    "src",
+    "eslint.config.ts",
+    "vite.config.ts"
+  ]
 ```
 
-**Replace `src/style.css` with Tailwind directives:**
+
+**Replace `src/style.css` with Tailwind import:**
 ```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* Custom styles */
 @layer components {
@@ -309,7 +315,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 npm run dev
 ```
 
-Visit http://localhost:5173 - you should see styled content!
+Visit http://localhost:5173 - you should see the styled content:
+![Tailwind CSS setup](./images/tailwind.png)
+
 
 ---
 
@@ -1133,13 +1141,17 @@ npm install -D vite-plugin-pwa
 >
 > For learning purposes, we'll use **auto-injection with prompt for update** to understand the full lifecycle.
 
-**Create `vite.config.ts`:**
+**Update `vite.config.ts` to add PWA support:**
+
+Extend your existing config from Step 2 by adding the PWA plugin alongside Tailwind:
 ```typescript
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
+    tailwindcss(),
     VitePWA({
       registerType: 'prompt', // Ask user before updating
       includeAssets: ['vite.svg'],
