@@ -597,6 +597,9 @@ import Navigo from 'navigo';
 
 export const router = new Navigo('/');
 
+// Track active subscriptions for cleanup
+const activeSubscriptions = new Set<() => void>();
+
 // Define routes
 export function setupRouter(appElement: HTMLElement) {
   // Cleanup subscriptions before each route change
@@ -623,14 +626,6 @@ export function setupRouter(appElement: HTMLElement) {
     })
     .resolve();
 }
-
-> **Memory Leak Prevention:**
->
-> The `before` hook cleans up store subscriptions when navigating between routes. Without this, each route transition would create a new subscription without removing the old one, causing memory leaks.
->
-> **Note:** This hook runs on every navigation, including the initial `resolve()` call. On first load, `activeSubscriptions` is empty, so the cleanup is harmless.
->
-> This pattern is essential in SPAs with state management!
 
 function renderHome(appElement: HTMLElement) {
   appElement.innerHTML = `
@@ -691,6 +686,14 @@ async function loadTasks() {
   // Will implement in Step 5
 }
 ```
+
+> **Memory Leak Prevention:**
+>
+> The `before` hook cleans up store subscriptions when navigating between routes. Without this, each route transition would create a new subscription without removing the old one, causing memory leaks.
+>
+> **Note:** This hook runs on every navigation, including the initial `resolve()` call. On first load, `activeSubscriptions` is empty, so the cleanup is harmless.
+>
+> This pattern is essential in SPAs with state management!
 
 **Update `src/main.ts`:**
 ```typescript
