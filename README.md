@@ -219,7 +219,12 @@ export default defineConfig([
 }
 ```
 
-> **Note:** With ESLint flat config, `--ext` is no longer needed. ESLint automatically detects file types.
+**Include eslint.config.ts in `tsconfig.json`:**
+```json
+  "include": ["src", "eslint.config.ts"]
+```
+This allows linting to run on eslint.config.ts as well.
+
 
 **Test it:**
 ```bash
