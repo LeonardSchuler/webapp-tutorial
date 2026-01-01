@@ -652,9 +652,276 @@ Visit http://localhost:5173 - you should see:
 
 **What you'll learn:** Client-side routing for single-page applications.
 
+> **Understanding Client-Side Routing:**
+>
+> Traditional websites reload the entire page when you click a link. Single-Page Applications (SPAs) work differently:
+> - Only the content area changes, no full page reload
+> - Faster navigation and smoother user experience
+> - Browser history (back/forward buttons) still works
+> - URLs reflect the current view (can bookmark/share specific pages)
+>
+> **How Navigo works:**
+> 1. Intercepts link clicks (via `data-navigo` attribute)
+> 2. Uses the History API (`pushState`) to update the URL without reloading
+> 3. Matches the new URL against registered route patterns
+> 4. Calls the corresponding render function
+> 5. Updates only the content area with new HTML
+
 **Install dependencies:**
 ```bash
 npm install navigo
+```
+
+**Create `src/router.ts`:**
+```typescript
+import Navigo from 'navigo';
+
+// Initialize router with base path '/' (root of your domain)
+// This tells Navigo where your app is mounted (useful for subdirectory deployments)
+export const router = new Navigo('/');
+
+
+// Define routes - mapping URL patterns to render functions
+export function setupRouter(appElement: HTMLElement) {
+  router
+    // Route: Home page (/)
+    .on('/', () => {
+      renderHome(appElement);
+    })
+    // Route: Tasks page (/tasks)
+    .on('/tasks', () => {
+      renderTasks(appElement);
+    })
+    // Route: About page (/about)
+    .on('/about', () => {
+      renderAbout(appElement);
+    })
+    // Fallback route: Catch all unmatched URLs
+    .notFound(() => {
+      appElement.innerHTML = '<div class="container mx-auto p-8"><h1 class="text-4xl">404 - Page Not Found</h1></div>';
+    })
+    // Start routing - check current URL and call matching handler
+    .resolve();
+}
+
+// Render function: Updates the DOM for the home page
+function renderHome(appElement: HTMLElement) {
+  // Replace the entire content of appElement with new HTML
+  appElement.innerHTML = `
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+      <div class="card">
+        <h2 class="text-3xl font-bold mb-4 text-gray-800">Welcome to Task Manager</h2>
+        <p class="text-gray-600 mb-4">A modern PWA built with:</p>
+        <ul class="list-disc list-inside text-gray-600 space-y-2">
+          <li>Vite + TypeScript</li>
+          <li>Web Components</li>
+          <li>Navigo Routing</li>
+          <li>Tailwind CSS</li>
+          <li>Fetch API</li>
+        </ul>
+        <!-- data-navigo attribute tells Navigo to intercept this link -->
+        <a href="/tasks" data-navigo class="btn btn-primary mt-6 inline-block">
+          View Tasks →
+        </a>
+      </div>
+    </div>
+  `;
+  // CRITICAL: Tell Navigo to attach click handlers to all links with data-navigo
+  // Without this, clicking links would cause full page reloads
+  router.updatePageLinks();
+}
+
+function renderAbout(appElement: HTMLElement) {
+  appElement.innerHTML = `
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+      <div class="card">
+        <h2 class="text-3xl font-bold mb-4 text-gray-800">About This App</h2>
+        <p class="text-gray-600 mb-4">
+          This is a learning project to master modern web development technologies.
+        </p>
+        <p class="text-gray-600">
+          Built as a Progressive Web App with offline support, testing, and best practices.
+        </p>
+      </div>
+    </div>
+  `;
+  router.updatePageLinks();
+}
+
+function renderTasks(appElement: HTMLElement) {
+  appElement.innerHTML = `
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+      <h2 class="text-3xl font-bold mb-6 text-gray-800">My Tasks</h2>
+      <div id="task-list">
+        <p class="text-gray-600">Loading tasks...</p>
+      </div>
+    </div>
+  `;
+  router.updatePageLinks();
+
+  // We'll load tasks via Fetch API in the next step
+  loadTasks();
+}
+
+// Placeholder for next step
+async function loadTasks() {
+  // Will implement in Step 5
+}
+```
+
+> **Important: `router.updatePageLinks()` explained:**
+>
+> Every time you render new HTML with `innerHTML`, you must call `router.updatePageLinks()`. Here's why:
+>
+> **Without `updatePageLinks()`:**
+> ```typescript
+> appElement.innerHTML = '<a href="/tasks" data-navigo>Tasks</a>';
+> // ❌ Link has NO click handler attached
+> // ❌ Clicking causes full page reload (traditional navigation)
+> ```
+>
+> **With `updatePageLinks()`:**
+> ```typescript
+> appElement.innerHTML = '<a href="/tasks" data-navigo>Tasks</a>';
+> router.updatePageLinks();
+> // ✅ Navigo scans for all [data-navigo] links
+> // ✅ Attaches click event listeners to intercept navigation
+> // ✅ Clicking triggers client-side routing (no reload)
+> ```
+>
+> **What happens behind the scenes:**
+> 1. Navigo finds all links with `data-navigo` attribute
+> 2. Adds click event listeners that call `event.preventDefault()`
+> 3. Extracts the `href` value from the link
+> 4. Uses `history.pushState()` to update browser URL without reload
+> 5. Matches the URL against registered routes
+> 6. Calls the matching render function
+>
+> **Rule of thumb:** Call `updatePageLinks()` after every `innerHTML` assignment that contains navigation links.
+
+> **Alternative: Programmatic Navigation**
+>
+> You can also navigate programmatically without links:
+> ```typescript
+> // Navigate to a route from JavaScript
+> router.navigate('/tasks');
+>
+> // Useful for redirects after form submissions, authentication, etc.
+> ```
+
+**Update `src/main.ts`:**
+```typescript
+import './style.css';
+import './components/AppHeader';
+import './components/TaskCard';
+import { setupRouter } from './router';
+
+const app = document.querySelector<HTMLDivElement>('#app')!;
+
+// Set up the app shell - header stays constant, content changes per route
+app.innerHTML = `
+  <app-header></app-header>
+  <main id="main-content"></main>
+`;
+
+// Get reference to the main content area where routes will render
+const mainContent = document.querySelector<HTMLElement>('#main-content')!;
+
+// Initialize the router - this calls .resolve() to match the current URL
+setupRouter(mainContent);
+```
+
+> **Architecture Pattern: App Shell**
+>
+> Notice the structure:
+> ```
+> <app-header>  ← Rendered once, stays constant
+> <main>        ← Content swapped on each route change
+> ```
+>
+> This is called the **App Shell pattern**:
+> - Header/navigation renders once at startup
+> - Only the `<main>` content area updates when navigating
+> - More efficient than re-rendering the entire page
+> - Provides consistent navigation UI across all routes
+>
+> **Flow summary:**
+> 1. User clicks link with `data-navigo` in header
+> 2. Navigo intercepts the click, updates URL with `pushState`
+> 3. Navigo matches URL to a route handler
+> 4. Handler calls render function (e.g., `renderTasks()`)
+> 5. Render function updates `mainContent.innerHTML`
+> 6. Only the content inside `<main>` changes - header stays the same
+
+**Test routing:**
+```bash
+npm run dev
+```
+
+Navigate between pages using the header links! Notice:
+- URL changes in address bar
+- Content updates without page reload (check Network tab - no document reload)
+- Back/forward buttons work correctly
+- You can bookmark specific routes
+
+---
+
+### Step 5: Fetch API
+
+**What you'll learn:** Make HTTP requests to APIs.
+
+**Create `src/api/tasks.ts`:**
+```typescript
+export interface Task {
+  id: number;
+  title: string;
+  completed: boolean;
+  userId: number;
+}
+
+const API_BASE = 'https://jsonplaceholder.typicode.com';
+
+export async function fetchTasks(): Promise<Task[]> {
+  try {
+    const response = await fetch(`${API_BASE}/todos?_limit=10`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const tasks: Task[] = await response.json();
+    return tasks;
+  } catch (error) {
+    console.error('Failed to fetch tasks:', error);
+    throw error;
+  }
+}
+
+export async function createTask(task: Omit<Task, 'id'>): Promise<Task> {
+  const response = await fetch(`${API_BASE}/todos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(task),
+  });
+  return response.json();
+}
+
+export async function updateTask(id: number, updates: Partial<Task>): Promise<Task> {
+  const response = await fetch(`${API_BASE}/todos/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  return response.json();
+}
+
+export async function deleteTask(id: number): Promise<void> {
+  await fetch(`${API_BASE}/todos/${id}`, {
+    method: 'DELETE',
+  });
+}
 ```
 
 **Create `src/store.ts` (Simple State Management):**
@@ -720,195 +987,6 @@ export const taskStore = new TaskStore();
 > - Avoids unnecessary refetches
 >
 > In production, consider using signals, Zustand, or similar libraries.
-
-**Create `src/router.ts`:**
-```typescript
-import Navigo from 'navigo';
-
-export const router = new Navigo('/');
-
-// Track active subscriptions for cleanup
-const activeSubscriptions = new Set<() => void>();
-
-// Define routes
-export function setupRouter(appElement: HTMLElement) {
-  // Cleanup subscriptions before each route change
-  // Note: This runs on EVERY navigation, including the initial resolve()
-  router.hooks({
-    before: () => {
-      activeSubscriptions.forEach((unsubscribe) => unsubscribe());
-      activeSubscriptions.clear();
-    },
-  });
-
-  router
-    .on('/', () => {
-      renderHome(appElement);
-    })
-    .on('/tasks', () => {
-      renderTasks(appElement);
-    })
-    .on('/about', () => {
-      renderAbout(appElement);
-    })
-    .notFound(() => {
-      appElement.innerHTML = '<div class="container mx-auto p-8"><h1 class="text-4xl">404 - Page Not Found</h1></div>';
-    })
-    .resolve();
-}
-
-function renderHome(appElement: HTMLElement) {
-  appElement.innerHTML = `
-    <div class="container mx-auto max-w-4xl px-4 py-8">
-      <div class="card">
-        <h2 class="text-3xl font-bold mb-4 text-gray-800">Welcome to Task Manager</h2>
-        <p class="text-gray-600 mb-4">A modern PWA built with:</p>
-        <ul class="list-disc list-inside text-gray-600 space-y-2">
-          <li>Vite + TypeScript</li>
-          <li>Web Components</li>
-          <li>Navigo Routing</li>
-          <li>Tailwind CSS</li>
-          <li>Fetch API</li>
-        </ul>
-        <a href="/tasks" data-navigo class="btn btn-primary mt-6 inline-block">
-          View Tasks →
-        </a>
-      </div>
-    </div>
-  `;
-  router.updatePageLinks();
-}
-
-function renderAbout(appElement: HTMLElement) {
-  appElement.innerHTML = `
-    <div class="container mx-auto max-w-4xl px-4 py-8">
-      <div class="card">
-        <h2 class="text-3xl font-bold mb-4 text-gray-800">About This App</h2>
-        <p class="text-gray-600 mb-4">
-          This is a learning project to master modern web development technologies.
-        </p>
-        <p class="text-gray-600">
-          Built as a Progressive Web App with offline support, testing, and best practices.
-        </p>
-      </div>
-    </div>
-  `;
-  router.updatePageLinks();
-}
-
-function renderTasks(appElement: HTMLElement) {
-  appElement.innerHTML = `
-    <div class="container mx-auto max-w-4xl px-4 py-8">
-      <h2 class="text-3xl font-bold mb-6 text-gray-800">My Tasks</h2>
-      <div id="task-list">
-        <p class="text-gray-600">Loading tasks...</p>
-      </div>
-    </div>
-  `;
-  router.updatePageLinks();
-
-  // We'll load tasks via Fetch API in the next step
-  loadTasks();
-}
-
-// Placeholder for next step
-async function loadTasks() {
-  // Will implement in Step 5
-}
-```
-
-> **Memory Leak Prevention:**
->
-> The `before` hook cleans up store subscriptions when navigating between routes. Without this, each route transition would create a new subscription without removing the old one, causing memory leaks.
->
-> **Note:** This hook runs on every navigation, including the initial `resolve()` call. On first load, `activeSubscriptions` is empty, so the cleanup is harmless.
->
-> This pattern is essential in SPAs with state management!
-
-**Update `src/main.ts`:**
-```typescript
-import './style.css';
-import './components/AppHeader';
-import './components/TaskCard';
-import { setupRouter } from './router';
-
-const app = document.querySelector<HTMLDivElement>('#app')!;
-
-app.innerHTML = `
-  <app-header></app-header>
-  <main id="main-content"></main>
-`;
-
-const mainContent = document.querySelector<HTMLElement>('#main-content')!;
-setupRouter(mainContent);
-```
-
-**Test routing:**
-```bash
-npm run dev
-```
-
-Navigate between pages using the header links!
-
----
-
-### Step 5: Fetch API
-
-**What you'll learn:** Make HTTP requests to APIs.
-
-**Create `src/api/tasks.ts`:**
-```typescript
-export interface Task {
-  id: number;
-  title: string;
-  completed: boolean;
-  userId: number;
-}
-
-const API_BASE = 'https://jsonplaceholder.typicode.com';
-
-export async function fetchTasks(): Promise<Task[]> {
-  try {
-    const response = await fetch(`${API_BASE}/todos?_limit=10`);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const tasks: Task[] = await response.json();
-    return tasks;
-  } catch (error) {
-    console.error('Failed to fetch tasks:', error);
-    throw error;
-  }
-}
-
-export async function createTask(task: Omit<Task, 'id'>): Promise<Task> {
-  const response = await fetch(`${API_BASE}/todos`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(task),
-  });
-  return response.json();
-}
-
-export async function updateTask(id: number, updates: Partial<Task>): Promise<Task> {
-  const response = await fetch(`${API_BASE}/todos/${id}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(updates),
-  });
-  return response.json();
-}
-
-export async function deleteTask(id: number): Promise<void> {
-  await fetch(`${API_BASE}/todos/${id}`, {
-    method: 'DELETE',
-  });
-}
-```
 
 **Update `src/router.ts` to use the API and store:**
 ```typescript
