@@ -325,7 +325,29 @@ Visit http://localhost:5173 - you should see the styled content:
 
 ### Step 3: Web Components
 
-**What you'll learn:** Create reusable, encapsulated custom HTML elements.
+**What you'll learn:** Create reusable, encapsulated custom HTML elements using the native Web Components API.
+
+> **Understanding the Web Components API**
+>
+> Web Components are a suite of **native browser features** (not a library or framework!) that let you create reusable custom elements:
+>
+> **Key Browser APIs:**
+> - `customElements` - Global registry for custom elements (available as `window.customElements`)
+> - `HTMLElement` - Base class that all custom elements extend
+> - `ShadowRoot` - Encapsulated DOM tree for style isolation
+>
+> **No imports needed!** These APIs are built into modern browsers:
+> ```typescript
+> // customElements is a global object - no import required
+> customElements.define('my-element', MyElement);
+>
+> // HTMLElement is the base class for all custom elements
+> class MyElement extends HTMLElement {
+>   constructor() {
+>     super(); // Always call super() first
+>   }
+> }
+> ```
 
 > **Important: Tailwind CSS and Shadow DOM**
 >
@@ -347,14 +369,19 @@ Visit http://localhost:5173 - you should see the styled content:
 
 **Create `src/components/TaskCard.ts`:**
 ```typescript
+// Extend HTMLElement - this is part of the Web Components API
+// No imports needed for HTMLElement or customElements!
 export class TaskCard extends HTMLElement {
   private shadow: ShadowRoot;
 
   constructor() {
+    // Always call super() first when extending HTMLElement
     super();
+    // Create a shadow root for style encapsulation
     this.shadow = this.attachShadow({ mode: 'open' });
   }
 
+  // Lifecycle callback: invoked when element is added to the DOM
   connectedCallback() {
     const title = this.getAttribute('title') || 'Untitled';
     const description = this.getAttribute('description') || '';
@@ -426,6 +453,7 @@ export class TaskCard extends HTMLElement {
 
   private setupEventListeners() {
     this.shadow.querySelector('.btn-complete')?.addEventListener('click', () => {
+      // Dispatch custom events that bubble through Shadow DOM (composed: true)
       this.dispatchEvent(new CustomEvent('toggle-complete', {
         bubbles: true,
         composed: true
@@ -441,6 +469,8 @@ export class TaskCard extends HTMLElement {
   }
 }
 
+// Register the custom element with the browser's customElements registry
+// No import needed - customElements is a global browser API!
 customElements.define('task-card', TaskCard);
 ```
 
@@ -513,8 +543,108 @@ export class AppHeader extends HTMLElement {
   }
 }
 
+// Register the custom element using the global customElements API
 customElements.define('app-header', AppHeader);
 ```
+
+**Test the components - Update `src/main.ts`:**
+```typescript
+import './style.css';
+// Import components to register them with customElements
+// The imports execute customElements.define() for each component
+import './components/AppHeader';
+import './components/TaskCard';
+
+const app = document.querySelector<HTMLDivElement>('#app')!;
+
+// Demonstrate reusability: Use the same components multiple times with different data
+app.innerHTML = `
+  <div class="min-h-screen bg-gray-100">
+    <!-- AppHeader component - used once for the page header -->
+    <app-header></app-header>
+
+    <main class="container mx-auto max-w-4xl px-4 py-8">
+      <div class="card mb-6">
+        <h2 class="text-3xl font-bold mb-4 text-gray-800">Web Components Demo</h2>
+        <p class="text-gray-600 mb-2">
+          Notice how we can reuse the same <code class="bg-gray-200 px-1 rounded">&lt;task-card&gt;</code>
+          component multiple times with different attributes. Each instance is independent and encapsulated!
+        </p>
+      </div>
+
+      <!-- TaskCard components - reused multiple times with different data -->
+      <task-card
+        title="Learn Web Components"
+        description="Understanding the native Web Components API">
+      </task-card>
+
+      <task-card
+        title="Build TaskCard Component"
+        description="Create a reusable task card with Shadow DOM"
+        completed>
+      </task-card>
+
+      <task-card
+        title="Build AppHeader Component"
+        description="Create a reusable header with navigation"
+        completed>
+      </task-card>
+
+      <task-card
+        title="Test Component Reusability"
+        description="Use the same component multiple times with different attributes">
+      </task-card>
+    </main>
+  </div>
+`;
+
+// Add event listeners to demonstrate component events
+document.querySelectorAll('task-card').forEach(card => {
+  card.addEventListener('toggle-complete', (e) => {
+    console.log('Task toggled:', e.target);
+    // In a real app, this would update your state/API
+    const target = e.target as HTMLElement;
+    if (target.hasAttribute('completed')) {
+      target.removeAttribute('completed');
+    } else {
+      target.setAttribute('completed', '');
+    }
+    // Force re-render by reconnecting (simplified for demo)
+    const parent = target.parentElement;
+    const next = target.nextSibling;
+    parent?.removeChild(target);
+    parent?.insertBefore(target, next);
+  });
+
+  card.addEventListener('delete-task', (e) => {
+    console.log('Task deleted:', e.target);
+    (e.target as HTMLElement).remove();
+  });
+});
+```
+
+**Run the demo:**
+```bash
+npm run dev
+```
+
+Visit http://localhost:5173 - you should see:
+- One `<app-header>` component at the top
+- Four different `<task-card>` components, each with unique content
+- Click "Complete" or "Delete" buttons to interact with them
+- Open DevTools and inspect the Shadow DOM of each component
+
+![Web Compoment Demo](./images/webComponents.png)
+
+> **Key Takeaway: Reusability**
+>
+> Notice how we:
+> 1. **Defined once** - Created `TaskCard` class and registered it with `customElements.define()`
+> 2. **Used multiple times** - Created 4 different task cards with different attributes
+> 3. **Encapsulated** - Each card has its own isolated styles and behavior
+> 4. **Interactive** - Each card independently handles its own events
+>
+> This is the power of Web Components! Once you define a custom element, you can use it anywhere in your HTML just like a native element (`<div>`, `<button>`, etc.).
 
 ---
 
