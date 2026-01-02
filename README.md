@@ -13,23 +13,23 @@ This tutorial will teach you these technologies by building a real application:
 
 ## Tutorial Roadmap
 
-```
-Phase 0: Project Setup
-└── Step 0: Create Vite project with TypeScript
+## Table of Contents
 
-Phase 1: Setup & Configuration
-├── Step 1: ESLint + Prettier
-└── Step 2: Tailwind CSS
-
-Phase 2: Core Features
-├── Step 3: Web Components (TaskCard, AppHeader)
-├── Step 4: Navigo Routing + State Management
-└── Step 5: Fetch API & Data Caching
-
-Phase 3: Quality & PWA
-├── Step 6: Vitest + Testing Library
-└── Step 7: Workbox PWA Support
-```
+- [Phase 0: Project Setup](#phase-0-project-setup)
+  - [Step 0: Create Vite Project](#step-0-create-vite-project)
+- [Phase 1: Setup & Configuration](#phase-1-setup--configuration)
+  - [Step 1: ESLint + Prettier Setup](#step-1-eslint--prettier-setup)
+  - [Step 2: Tailwind CSS Setup](#step-2-tailwind-css-setup)
+- [Phase 2: Core Features](#phase-2-core-features)
+  - [Step 3: Web Components](#step-3-web-components)
+  - [Step 4: Navigo Routing](#step-4-navigo-routing)
+  - [Step 5: Fetch API & Data Caching](#step-5-fetch-api--data-caching)
+- [Phase 3: Quality & PWA](#phase-3-quality--pwa)
+  - [Step 6: Vitest + Testing Library](#step-6-vitest--testing-library)
+  - [Step 7: Workbox PWA](#step-7-workbox-pwa)
+- [Summary](#summary)
+- [Next Steps](#next-steps)
+- [Useful Commands](#useful-commands)
 
 **Estimated time:** 2-3 hours
 **Prerequisites:** Basic JavaScript/TypeScript knowledge
@@ -1979,6 +1979,7 @@ export default defineConfig({
 });
 ```
 
+
 **Update `index.html` with PWA meta tags:**
 ```html
 <!doctype html>
@@ -1998,7 +1999,27 @@ export default defineConfig({
 </html>
 ```
 
-**Update `src/main.ts` to handle PWA updates:**
+> **PWA Meta Tags Explained:**
+>
+> **`<meta name="theme-color" content="#667eea" />`**
+> - Controls the color of browser UI elements on mobile devices
+> - **Android Chrome:** Colors the address bar and status bar to match your app
+> - **iOS Safari:** Tints the status bar (limited support)
+> - **Installed PWA:** Colors the app's title bar/header area
+> - Creates a more immersive, native app-like experience
+> - **Best practice:** Use your app's primary brand color (here: purple-blue `#667eea`)
+>
+> **`<meta name="description" content="A modern task management PWA" />`**
+> - Provides a brief description of your app
+> - **Used by:**
+>   - Search engines (Google, Bing) - Appears in search results
+>   - Social media - Shows when sharing links (Twitter, Facebook, LinkedIn)
+>   - Browser bookmarks - Some browsers display this in bookmark info
+>   - PWA install prompt - Appears in "Add to Home Screen" dialog
+>
+> These meta tags are essential for PWA quality and user experience. They help your app feel more native and provide context when users discover, share, or install your app.
+
+**Update src/main.ts to handle PWA updates:**
 ```typescript
 import './style.css';
 import './components/AppHeader';
@@ -2020,7 +2041,8 @@ setupRouter(mainContent);
 const updateSW = registerSW({
   onNeedRefresh() {
     if (confirm('New content available! Reload to update?')) {
-      updateSW(true); // Force update
+      // updateSW(true) returns a Promise, void means we are not awaiting
+      void updateSW(true); // Force update
     }
   },
   onOfflineReady() {
@@ -2028,6 +2050,110 @@ const updateSW = registerSW({
   },
 });
 ```
+
+> **Understanding `registerSW` and Service Worker Lifecycle:**
+>
+> **What is `registerSW`?**
+> The `registerSW` function (from `virtual:pwa-register`) registers your service worker and provides lifecycle callbacks to control how your app handles updates.
+>
+> **Function signature:**
+> ```typescript
+> const updateSW = registerSW(options?: RegisterSWOptions): (reloadPage?: boolean) => Promise<void>
+> ```
+>
+> **Return value:** A function that can force an update when called with `updateSW(true)`.
+>
+> **Key Lifecycle Callbacks:**
+>
+> **`onNeedRefresh()`** - Called when a new version of your app is available
+> - Triggered when the service worker detects updated files
+> - **Use case:** Prompt the user to reload and get the latest version
+> - **Best practice:** Don't force updates - let users choose when to reload
+> - In our example: Shows a browser `confirm()` dialog
+> - If user accepts: Calls `updateSW(true)` to apply the update immediately
+>
+> **`onOfflineReady()`** - Called when the app is ready to work offline
+> - Triggered after all assets are cached for the first time
+> - **Use case:** Notify users that the app will work without internet
+> - In our example: Logs to console (in production, show a toast notification)
+>
+> **Additional callbacks (not used in this tutorial):**
+> - **`onRegistered(registration)`** - Called when SW successfully registers
+> - **`onRegisterError(error)`** - Called if SW registration fails
+> - **`immediate: true`** - Auto-updates without user prompt (not recommended)
+>
+> **Service Worker Update Flow:**
+> ```
+> 1. User visits app with old version
+> 2. Service worker checks for updates in background
+> 3. New version found → onNeedRefresh() fires
+> 4. User sees: "New content available! Reload to update?"
+> 5. User clicks OK → updateSW(true) is called
+> 6. Service worker activates new version
+> 7. Page reloads with fresh content
+> ```
+>
+> **Why `registerType: 'prompt'`?**
+> We configured the plugin with `registerType: 'prompt'` in `vite.config.ts`. This means the user controls when to update the app.
+>
+> **Alternative: Auto-update (not recommended)**
+> ```typescript
+> // registerType: 'autoUpdate' in vite.config.ts
+> // No callbacks needed - updates happen silently
+> // Bad UX: Can interrupt user workflows
+> ```
+>
+> **Production improvements:**
+> Instead of `confirm()` dialogs, consider:
+> - Toast notifications (e.g., using a toast library)
+> - In-app banners that persist until dismissed
+> - "Update available" button in app header
+> - Visual indicators without blocking the user
+
+**Add TypeScript type declarations for PWA virtual module:**
+
+Create or update `src/vite-env.d.ts` to include type definitions for the virtual module:
+```typescript
+/// <reference types="vite-plugin-pwa/client" />
+```
+
+> **Understanding Virtual Modules:**
+>
+> **What are virtual modules?**
+> Virtual modules are modules that don't exist as physical files on disk. Instead, they're generated dynamically by Vite plugins during the build process.
+>
+> **Traditional vs Virtual Modules:**
+> ```typescript
+> // Traditional: Imports from an actual file on disk
+> import { router } from './router';  // → reads src/router.ts
+>
+> // Virtual: Imports from plugin-generated code
+> import { registerSW } from 'virtual:pwa-register';  // → no physical file!
+> ```
+>
+> **How it works:**
+> 1. When you write `import ... from 'virtual:pwa-register'`, Vite recognizes the `virtual:` prefix
+> 2. The `vite-plugin-pwa` intercepts this import during the build
+> 3. The plugin generates JavaScript code on-the-fly based on your configuration
+> 4. This generated code (service worker registration logic) is injected into your bundle
+> 5. At runtime, your app executes the plugin-generated code
+>
+> **The TypeScript problem:**
+> TypeScript analyzes your code **before** the build runs. When it sees `import { registerSW } from 'virtual:pwa-register'`, it looks for a physical file and finds nothing, causing the error:
+> ```
+> Cannot find module 'virtual:pwa-register' or its corresponding type declarations
+> ```
+>
+> **The solution:**
+> The `/// <reference types="vite-plugin-pwa/client" />` directive tells TypeScript: "This module will exist at build time, here are its types." It loads the official type definitions bundled with the plugin, which includes all types for `registerSW` and its options.
+>
+> **Why virtual modules are useful:**
+> - **Configuration-driven** - Plugin generates different code based on your config
+> - **No boilerplate** - You don't maintain service worker registration code manually
+> - **Clean project** - No extra files cluttering your src directory
+> - **Type-safe** - With proper declarations, you get full TypeScript IntelliSense
+>
+> **Note:** If you already have a `vite-env.d.ts` file (Vite sometimes creates one by default), just add this reference directive to the top of that file.
 
 > **Architecture Decision:**
 >
