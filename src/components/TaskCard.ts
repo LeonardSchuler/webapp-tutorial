@@ -77,17 +77,21 @@ export class TaskCard extends HTMLElement {
 
   private setupEventListeners() {
     this.shadow.querySelector('.btn-complete')?.addEventListener('click', () => {
-      this.dispatchEvent(new CustomEvent('toggle-complete', {
-        bubbles: true,
-        composed: true
-      }));
+      this.dispatchEvent(
+        new CustomEvent('toggle-complete', {
+          bubbles: true,
+          composed: true,
+        })
+      );
     });
 
     this.shadow.querySelector('.btn-delete')?.addEventListener('click', () => {
-      this.dispatchEvent(new CustomEvent('delete-task', {
-        bubbles: true,
-        composed: true
-      }));
+      this.dispatchEvent(
+        new CustomEvent('delete-task', {
+          bubbles: true,
+          composed: true,
+        })
+      );
     });
   }
 }
