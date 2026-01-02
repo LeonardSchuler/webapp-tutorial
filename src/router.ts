@@ -74,9 +74,6 @@ function renderAbout(appElement: HTMLElement) {
   router.updatePageLinks();
 }
 
-// Track active subscriptions for cleanup
-const activeSubscriptions = new Set<() => void>();
-
 // Replace the renderTasks function:
 function renderTasks(appElement: HTMLElement) {
   appElement.innerHTML = `
@@ -97,18 +94,11 @@ function renderTasks(appElement: HTMLElement) {
     void loadTasks(appElement);
   });
 
-  // Subscribe to store changes
-  const unsubscribe = taskStore.subscribe(() => {
-    renderTaskList(appElement);
-  });
-
-  // Track for cleanup on route change
-  activeSubscriptions.add(unsubscribe);
-
-  // Initial load
-  if (taskStore.getTasks().length === 0) {
+  if (!taskStore.isLoaded) {
+    console.log('Loading tasks from API');
     void loadTasks(appElement);
   } else {
+    console.log('Using cached tasks');
     renderTaskList(appElement);
   }
 }
@@ -117,8 +107,12 @@ async function loadTasks(appElement: HTMLElement) {
   const taskList = appElement.querySelector('#task-list')!;
 
   try {
+    console.log('Fetching tasks from API...');
     const tasks = await fetchTasks();
-    taskStore.setTasks(tasks);
+    console.log('Fetched tasks:', tasks.length);
+    taskStore.tasks = tasks;
+    taskStore.isLoaded = true;
+    renderTaskList(appElement);
   } catch {
     taskList.innerHTML = '<p class="text-red-600">Failed to load tasks. Please try again.</p>';
   }
@@ -126,7 +120,7 @@ async function loadTasks(appElement: HTMLElement) {
 
 function renderTaskList(appElement: HTMLElement) {
   const taskList = appElement.querySelector('#task-list')!;
-  const tasks = taskStore.getTasks();
+  const tasks = taskStore.tasks;
 
   if (tasks.length === 0) {
     taskList.innerHTML = '<p class="text-gray-600">No tasks found.</p>';
@@ -150,14 +144,22 @@ function renderTaskList(appElement: HTMLElement) {
 
         try {
           // Optimistic update - update UI immediately
-          taskStore.updateTask(task.id, { completed: !task.completed });
+          const index = taskStore.tasks.findIndex((t) => t.id === task.id);
+          if (index !== -1) {
+            taskStore.tasks[index] = { ...taskStore.tasks[index], completed: !task.completed };
+          }
+          renderTaskList(appElement);
 
           // Then sync with server
           await updateTask(task.id, { completed: !task.completed });
         } catch (error) {
           console.error('Failed to update task:', error);
           // Rollback on failure
-          taskStore.updateTask(task.id, { completed: previousState });
+          const index = taskStore.tasks.findIndex((t) => t.id === task.id);
+          if (index !== -1) {
+            taskStore.tasks[index] = { ...taskStore.tasks[index], completed: previousState };
+          }
+          renderTaskList(appElement);
           alert('Failed to update task. Please try again.');
         }
       })();
@@ -167,11 +169,12 @@ function renderTaskList(appElement: HTMLElement) {
     taskCard.addEventListener('delete-task', () => {
       void (async () => {
         const taskCopy = { ...task };
-        let originalIndex: number = -1;
+        const originalIndex = taskStore.tasks.findIndex((t) => t.id === task.id);
 
         try {
-          // Optimistic delete - remove from UI immediately, save index
-          originalIndex = taskStore.removeTask(task.id);
+          // Optimistic delete - remove from UI immediately
+          taskStore.tasks = taskStore.tasks.filter((t) => t.id !== task.id);
+          renderTaskList(appElement);
 
           // Then sync with server
           await deleteTask(task.id);
@@ -179,12 +182,12 @@ function renderTaskList(appElement: HTMLElement) {
           console.error('Failed to delete task:', error);
           // Rollback on failure - restore the task at its original position
           if (originalIndex >= 0) {
-            taskStore.insertTask(taskCopy, originalIndex);
+            taskStore.tasks.splice(originalIndex, 0, taskCopy);
           } else {
             // Fallback: append at end if index was lost
-            const currentTasks = taskStore.getTasks();
-            taskStore.setTasks([...currentTasks, taskCopy]);
+            taskStore.tasks = [...taskStore.tasks, taskCopy];
           }
+          renderTaskList(appElement);
           alert('Failed to delete task. Please try again.');
         }
       })();
