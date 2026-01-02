@@ -1,3 +1,5 @@
+import { router } from '../router';
+
 export class AppHeader extends HTMLElement {
   private shadow: ShadowRoot;
 
@@ -48,6 +50,23 @@ export class AppHeader extends HTMLElement {
         </nav>
       </header>
     `;
+
+    this.attachNavigationHandlers();
+  }
+
+  private attachNavigationHandlers() {
+    // Find all links with data-navigo in shadow DOM
+    const links = this.shadow.querySelectorAll('a[data-navigo]');
+
+    links.forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent default browser navigation
+        const href = (link as HTMLAnchorElement).getAttribute('href');
+        if (href) {
+          router.navigate(href); // Use Navigo's client-side navigation
+        }
+      });
+    });
   }
 }
 
