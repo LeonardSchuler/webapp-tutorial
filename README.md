@@ -309,6 +309,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   </div>
 `;
 ```
+> Note: The `!` in `document.querySelector<HTMLDivElement>('#app')!` tells TypeScript: "I know this value won't be null or undefined, even though the type system thinks it might be
 
 **Run dev server:**
 ```bash
@@ -332,7 +333,7 @@ Visit http://localhost:5173 - you should see the styled content:
 > Web Components are a suite of **native browser features** (not a library or framework!) that let you create reusable custom elements:
 >
 > **Key Browser APIs:**
-> - `customElements` - Global registry for custom elements (available as `window.customElements`)
+> - `customElements` - Global registry for custom elements (also available as `window.customElements`)
 > - `HTMLElement` - Base class that all custom elements extend
 > - `ShadowRoot` - Encapsulated DOM tree for style isolation
 >
@@ -345,6 +346,56 @@ Visit http://localhost:5173 - you should see the styled content:
 > class MyElement extends HTMLElement {
 >   constructor() {
 >     super(); // Always call super() first
+>   }
+> }
+> ```
+>
+> **Web Component Lifecycle Callbacks:**
+>
+> Custom elements have built-in lifecycle methods that the browser automatically calls:
+>
+> - **`connectedCallback()`** - Called when the element is inserted into the DOM
+>   - Most common place to set up rendering and event listeners
+>   - Can be called multiple times if element is moved
+>   - Safe to access attributes and set up Shadow DOM content here
+>
+> - **`disconnectedCallback()`** - Called when the element is removed from the DOM
+>   - Use this to clean up: remove event listeners, cancel timers, etc.
+>   - Prevents memory leaks
+>
+> - **`attributeChangedCallback(name, oldValue, newValue)`** - Called when an observed attribute changes
+>   - Must define `static observedAttributes = ['attr1', 'attr2']` to specify which attributes to watch
+>   - Useful for reactive updates when attributes change
+>   - Only observes attributes listed in `observedAttributes`
+>
+> - **`adoptedCallback()`** - Called when element is moved to a new document
+>   - Rarely used (mainly for iframe scenarios)
+>
+> **Example with lifecycle callbacks:**
+> ```typescript
+> class MyElement extends HTMLElement {
+>   static observedAttributes = ['title', 'status'];
+>
+>   constructor() {
+>     super();
+>     this.attachShadow({ mode: 'open' });
+>   }
+>
+>   connectedCallback() {
+>     // Render when element is added to DOM
+>     this.render();
+>   }
+>
+>   disconnectedCallback() {
+>     // Clean up when removed
+>     this.cleanup();
+>   }
+>
+>   attributeChangedCallback(name, oldValue, newValue) {
+>     // Re-render when observed attributes change
+>     if (oldValue !== newValue) {
+>       this.render();
+>     }
 >   }
 > }
 > ```
@@ -990,8 +1041,11 @@ export const taskStore = new TaskStore();
 
 **Update `src/router.ts` to use the API and store:**
 ```typescript
+import Navigo from 'navigo';
 import { fetchTasks, updateTask, deleteTask, type Task } from './api/tasks';
 import { taskStore } from './store';
+
+...
 
 // Track active subscriptions for cleanup
 const activeSubscriptions = new Set<() => void>();
@@ -1012,7 +1066,9 @@ function renderTasks(appElement: HTMLElement) {
   router.updatePageLinks();
 
   const refreshBtn = appElement.querySelector('#refresh-btn');
-  refreshBtn?.addEventListener('click', () => loadTasks(appElement));
+  refreshBtn?.addEventListener('click', () => {
+    void loadTasks(appElement);
+  });
 
   // Subscribe to store changes
   const unsubscribe = taskStore.subscribe(() => {
@@ -1024,7 +1080,7 @@ function renderTasks(appElement: HTMLElement) {
 
   // Initial load
   if (taskStore.getTasks().length === 0) {
-    loadTasks(appElement);
+    void loadTasks(appElement);
   } else {
     renderTaskList(appElement);
   }
@@ -1036,7 +1092,7 @@ async function loadTasks(appElement: HTMLElement) {
   try {
     const tasks = await fetchTasks();
     taskStore.setTasks(tasks);
-  } catch (error) {
+  } catch {
     taskList.innerHTML = '<p class="text-red-600">Failed to load tasks. Please try again.</p>';
   }
 }
@@ -1061,46 +1117,50 @@ function renderTaskList(appElement: HTMLElement) {
     }
 
     // Handle toggle complete
-    taskCard.addEventListener('toggle-complete', async () => {
-      const previousState = task.completed;
+    taskCard.addEventListener('toggle-complete', () => {
+      void (async () => {
+        const previousState = task.completed;
 
-      try {
-        // Optimistic update - update UI immediately
-        taskStore.updateTask(task.id, { completed: !task.completed });
+        try {
+          // Optimistic update - update UI immediately
+          taskStore.updateTask(task.id, { completed: !task.completed });
 
-        // Then sync with server
-        await updateTask(task.id, { completed: !task.completed });
-      } catch (error) {
-        console.error('Failed to update task:', error);
-        // Rollback on failure
-        taskStore.updateTask(task.id, { completed: previousState });
-        alert('Failed to update task. Please try again.');
-      }
+          // Then sync with server
+          await updateTask(task.id, { completed: !task.completed });
+        } catch (error) {
+          console.error('Failed to update task:', error);
+          // Rollback on failure
+          taskStore.updateTask(task.id, { completed: previousState });
+          alert('Failed to update task. Please try again.');
+        }
+      })();
     });
 
     // Handle delete
-    taskCard.addEventListener('delete-task', async () => {
-      const taskCopy = { ...task };
-      let originalIndex: number;
+    taskCard.addEventListener('delete-task', () => {
+      void (async () => {
+        const taskCopy = { ...task };
+        let originalIndex: number = -1;
 
-      try {
-        // Optimistic delete - remove from UI immediately, save index
-        originalIndex = taskStore.removeTask(task.id);
+        try {
+          // Optimistic delete - remove from UI immediately, save index
+          originalIndex = taskStore.removeTask(task.id);
 
-        // Then sync with server
-        await deleteTask(task.id);
-      } catch (error) {
-        console.error('Failed to delete task:', error);
-        // Rollback on failure - restore the task at its original position
-        if (originalIndex >= 0) {
-          taskStore.insertTask(taskCopy, originalIndex);
-        } else {
-          // Fallback: append at end if index was lost
-          const currentTasks = taskStore.getTasks();
-          taskStore.setTasks([...currentTasks, taskCopy]);
+          // Then sync with server
+          await deleteTask(task.id);
+        } catch (error) {
+          console.error('Failed to delete task:', error);
+          // Rollback on failure - restore the task at its original position
+          if (originalIndex >= 0) {
+            taskStore.insertTask(taskCopy, originalIndex);
+          } else {
+            // Fallback: append at end if index was lost
+            const currentTasks = taskStore.getTasks();
+            taskStore.setTasks([...currentTasks, taskCopy]);
+          }
+          alert('Failed to delete task. Please try again.');
         }
-        alert('Failed to delete task. Please try again.');
-      }
+      })();
     });
 
     taskList.appendChild(taskCard);
