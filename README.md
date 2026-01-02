@@ -246,7 +246,7 @@ The official Tailwind docs recommend a non-dev (without `-D`) install. However, 
 
 **Configure the Vite plugin:**
 
-Create [vite.config.ts](vite.config.ts) with the Tailwind plugin:
+Create `vite.config.ts` with the Tailwind plugin:
 ```typescript
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
@@ -1557,11 +1557,6 @@ export default defineConfig({
 });
 ```
 
-> **Configuration options explained:**
->
-> - **`globals: true`** - Use `describe()`, `it()`, `expect()` without importing them in every test file
-> - **`environment: 'jsdom'`** - Simulates a browser environment (provides `window`, `document`, DOM APIs)
-
 **Add the vitest.config.ts file to tsconfig.json to enable linting on the file:**
 ```json
   "include": [
@@ -1901,7 +1896,6 @@ describe('TaskCard Component', () => {
 > - Must call `userEvent.setup()` to create a user instance per test
 >
 > For simple rendering tests, direct assertions are fine. For user interactions, `userEvent` provides more confidence.
-```
 
 
 
