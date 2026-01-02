@@ -1021,107 +1021,107 @@ async function loadTasks() {
 > // Useful for redirects after form submissions, authentication, etc.
 > ```
 
-> **Important: Navigo and Shadow DOM**
->
-> The `AppHeader` component will **not work correctly** with client-side routing as-is. Here's why:
->
-> **The Problem:**
-> - `router.updatePageLinks()` only scans the **Light DOM** for `[data-navigo]` links
-> - Links inside Shadow DOM are **isolated** and invisible to external JavaScript
-> - Result: Clicking header links causes **full page reloads** instead of client-side navigation
->
-> **The Solution:**
-> You need to manually attach click handlers inside the Shadow DOM. Update `AppHeader.ts`:
->
-> ```typescript
-> import { router } from '../router';
->
-> export class AppHeader extends HTMLElement {
->   private shadow: ShadowRoot;
->
->   constructor() {
->     super();
->     this.shadow = this.attachShadow({ mode: 'open' });
->   }
->
->   connectedCallback() {
->     this.shadow.innerHTML = `
->       <style>
->         :host {
->           display: block;
->         }
->         header {
->           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
->           color: white;
->           padding: 2rem;
->           text-align: center;
->           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
->         }
->         h1 {
->           font-size: 2.5rem;
->           font-weight: 700;
->           margin: 0 0 0.5rem 0;
->         }
->         nav {
->           margin-top: 1rem;
->         }
->         nav a {
->           color: white;
->           text-decoration: none;
->           margin: 0 1rem;
->           padding: 0.5rem 1rem;
->           border-radius: 0.375rem;
->           transition: background-color 0.2s;
->         }
->         nav a:hover {
->           background: rgba(255, 255, 255, 0.2);
->         }
->       </style>
->       <header>
->         <h1>📝 Task Manager</h1>
->         <nav>
->           <a href="/" data-navigo>Home</a>
->           <a href="/tasks" data-navigo>Tasks</a>
->           <a href="/about" data-navigo>About</a>
->         </nav>
->       </header>
->     `;
->
->     // CRITICAL: Manually attach navigation handlers for Shadow DOM links
->     this.attachNavigationHandlers();
->   }
->
->   private attachNavigationHandlers() {
->     // Find all links with data-navigo in shadow DOM
->     const links = this.shadow.querySelectorAll('a[data-navigo]');
->
->     links.forEach((link) => {
->       link.addEventListener('click', (e) => {
->         e.preventDefault(); // Prevent default browser navigation
->         const href = (link as HTMLAnchorElement).getAttribute('href');
->         if (href) {
->           router.navigate(href); // Use Navigo's client-side navigation
->         }
->       });
->     });
->   }
-> }
->
-> customElements.define('app-header', AppHeader);
-> ```
->
-> **What changed:**
-> 1. **Import router** - `import { router } from '../router'` at the top
-> 2. **Call attachNavigationHandlers()** - Added after setting `innerHTML` in `connectedCallback()`
-> 3. **Manual click handlers** - Query Shadow DOM links and attach click listeners that:
->    - Prevent default browser navigation (`e.preventDefault()`)
->    - Use Navigo's programmatic navigation (`router.navigate(href)`)
->
-> **Why this is necessary:**
-> - Shadow DOM creates an **encapsulation boundary**
-> - Navigo's `updatePageLinks()` uses `document.querySelectorAll()`, which only searches the Light DOM
-> - Links inside Shadow DOM require manual event handling from within the component
->
+**Important: Navigo and Shadow DOM**
+
+The `AppHeader` component will **not work correctly** with client-side routing as-is. Here's why:
+
+**The Problem:**
+- `router.updatePageLinks()` only scans the **Light DOM** for `[data-navigo]` links
+- Links inside Shadow DOM are **isolated** and invisible to external JavaScript
+- Result: Clicking header links causes **full page reloads** instead of client-side navigation
+
+**The Solution:**
+You need to manually attach click handlers inside the Shadow DOM. Update `AppHeader.ts`:
+
+```typescript
+import { router } from '../router';
+
+export class AppHeader extends HTMLElement {
+  private shadow: ShadowRoot;
+
+  constructor() {
+    super();
+    this.shadow = this.attachShadow({ mode: 'open' });
+  }
+
+  connectedCallback() {
+    this.shadow.innerHTML = `
+      <style>
+        :host {
+          display: block;
+        }
+        header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 2rem;
+          text-align: center;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+          font-size: 2.5rem;
+          font-weight: 700;
+          margin: 0 0 0.5rem 0;
+        }
+        nav {
+          margin-top: 1rem;
+        }
+        nav a {
+          color: white;
+          text-decoration: none;
+          margin: 0 1rem;
+          padding: 0.5rem 1rem;
+          border-radius: 0.375rem;
+          transition: background-color 0.2s;
+        }
+        nav a:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      </style>
+      <header>
+        <h1>📝 Task Manager</h1>
+        <nav>
+          <a href="/" data-navigo>Home</a>
+          <a href="/tasks" data-navigo>Tasks</a>
+          <a href="/about" data-navigo>About</a>
+        </nav>
+      </header>
+    `;
+
+    // CRITICAL: Manually attach navigation handlers for Shadow DOM links
+    this.attachNavigationHandlers();
+  }
+
+  private attachNavigationHandlers() {
+    // Find all links with data-navigo in shadow DOM
+    const links = this.shadow.querySelectorAll('a[data-navigo]');
+
+    links.forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent default browser navigation
+        const href = (link as HTMLAnchorElement).getAttribute('href');
+        if (href) {
+          router.navigate(href); // Use Navigo's client-side navigation
+        }
+      });
+    });
+  }
+}
+
+customElements.define('app-header', AppHeader);
+```
+
+**What changed:**
+1. **Import router** - `import { router } from '../router'` at the top
+2. **Call attachNavigationHandlers()** - Added after setting `innerHTML` in `connectedCallback()`
+3. **Manual click handlers** - Query Shadow DOM links and attach click listeners that:
+   - Prevent default browser navigation (`e.preventDefault()`)
+   - Use Navigo's programmatic navigation (`router.navigate(href)`)
+
+**Why this is necessary:**
+- Shadow DOM creates an **encapsulation boundary**
+- Navigo's `updatePageLinks()` uses `document.querySelectorAll()`, which only searches the Light DOM
+- Links inside Shadow DOM require manual event handling from within the component
+
 > **Alternative: Light DOM for navigation**
 > If you don't need style encapsulation for the header, you could skip Shadow DOM:
 > ```typescript
