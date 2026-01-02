@@ -1482,10 +1482,68 @@ Navigate to /tasks and see real data from the API!
 
 **What you'll learn:** Write automated tests for your code.
 
+**Documentation:** [Testing Library](https://testing-library.com/) - Excellent guides and best practices for testing user interactions
+
 **Install dependencies:**
 ```bash
 npm install -D vitest jsdom @testing-library/dom @testing-library/user-event @vitest/ui
 ```
+
+> **Understanding the Testing Stack:**
+>
+> Each library serves a specific purpose in our testing setup:
+>
+> **`vitest`** - The Test Runner
+> - Finds and executes test files (`.test.ts`)
+> - Provides test APIs: `describe()`, `it()`, `expect()`, `beforeEach()`, `vi.fn()`
+> - Blazingly fast - reuses Vite's transformation pipeline
+> - Compatible with Jest API, but built for Vite
+>
+> **`jsdom`** - Browser Environment Simulator
+> - Creates a fake browser environment in Node.js
+> - Provides `window`, `document`, `HTMLElement`, and other DOM APIs
+> - Without it, code using `document.querySelector()` would crash in tests
+> - Lightweight alternative to running tests in a real browser
+>
+> **`@testing-library/dom`** - DOM Testing Utilities
+> - Query helpers: `getByText()`, `getByRole()`, `queryByTestId()`
+> - Encourages testing from the user's perspective (what they see/interact with)
+> - Includes `cleanup()` to reset DOM between tests
+> - Philosophy: "The more your tests resemble how users interact with your app, the more confidence they give you"
+>
+> **`@testing-library/user-event`** - User Interaction Simulation
+> - Simulates realistic user actions: `click()`, `type()`, `hover()`
+> - More thorough than direct methods (fires all related events a real user would trigger)
+> - Handles edge cases like focus, blur, keyboard navigation
+> - Makes tests more realistic and reliable
+>
+> **`@vitest/ui`** - Visual Test Dashboard
+> - Web-based UI for viewing test results (`npm run test:ui`)
+> - Shows execution time, pass/fail status, and error details
+> - Much easier to browse than terminal output
+> - Great for debugging and monitoring test suites
+>
+> **How they work together:**
+> ```
+> vitest (runs tests)
+>   → jsdom (provides browser APIs)
+>     → @testing-library/dom (finds elements)
+>       → @testing-library/user-event (simulates interactions)
+>         → @vitest/ui (displays results)
+> ```
+
+> **Test File Organization:**
+>
+> We follow the **co-located** test pattern - test files live next to the source code they test:
+> - `src/api/tasks.ts` → `src/api/tasks.test.ts`
+> - `src/components/TaskCard.ts` → `src/components/TaskCard.test.ts`
+>
+> This is the modern standard in Vite/React/Vue projects because:
+> - Tests are easy to find (right next to the code)
+> - Clear 1:1 relationship between code and tests
+> - Easier to maintain when moving or deleting files
+>
+> Each test file manages its own setup and cleanup using `beforeEach()` and `afterEach()` hooks.
 
 **Create `vitest.config.ts`:**
 ```typescript
@@ -1495,55 +1553,112 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
   },
 });
 ```
 
-**Create `src/test/setup.ts`:**
-```typescript
-import { expect, afterEach } from 'vitest';
-import { cleanup } from '@testing-library/dom';
+> **Configuration options explained:**
+>
+> - **`globals: true`** - Use `describe()`, `it()`, `expect()` without importing them in every test file
+> - **`environment: 'jsdom'`** - Simulates a browser environment (provides `window`, `document`, DOM APIs)
 
-// Cleanup after each test
-afterEach(() => {
-  cleanup();
-});
+**Add the vitest.config.ts file to tsconfig.json to enable linting on the file:**
+```json
+  "include": [
+    "src",
+    "eslint.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ]
 ```
 
+> **Configuration options explained:**
+>
+> - **`globals: true`** - Use `describe()`, `it()`, `expect()` without importing them in every test file
+> - **`environment: 'jsdom'`** - Simulates a browser environment (provides `window`, `document`, DOM APIs)
+
 **Create `src/api/tasks.test.ts`:**
+
+> **Understanding Vitest Test Functions:**
+>
+> Before writing tests, let's understand the key functions from Vitest:
+>
+> **`describe(name, fn)`** - Groups related tests into a test suite
+> - Organizes tests logically (e.g., all Task API tests together)
+> - Can be nested for more structure
+> - Example: `describe('Task API', () => { /* tests */ })`
+>
+> **`it(name, fn)`** (or `test()`) - Defines a single test case
+> - Each `it` is one test that checks one behavior
+> - Name should describe what's being tested
+> - Example: `it('should fetch tasks', () => { /* ... */ })`
+>
+> **`expect(value)`** - Makes assertions about values
+> - Checks if your code produces the expected result
+> - Common matchers: `.toBe()`, `.toEqual()`, `.toHaveLength()`, `.toThrow()`
+> - Example: `expect(result).toEqual(expectedValue)`
+>
+> **`vi`** - Vitest utilities for mocking and spying
+> - `vi.fn()` - Creates a mock function
+> - `vi.stubGlobal()` - Mocks global variables like `fetch`
+> - `vi.clearAllMocks()` - Clears mock call history
+> - Example: `const mockFn = vi.fn()`
+>
+> **`beforeEach(fn)`** - Runs before each test
+> - Sets up fresh test environment for every test
+> - Also: `afterEach()`, `beforeAll()`, `afterAll()`
+> - Example: `beforeEach(() => { /* setup */ })`
+>
+> **Typical test structure (AAA pattern):**
+> ```typescript
+> describe('MyFunction', () => {
+>   it('should do something', () => {
+>     // Arrange - Set up test data
+>     const input = 'test';
+>
+>     // Act - Execute the code being tested
+>     const result = doSomething(input);
+>
+>     // Assert - Check the result
+>     expect(result).toBe('expected');
+>   });
+> });
+> ```
+
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchTasks, createTask, updateTask, deleteTask } from './tasks';
 
-// Mock fetch
-global.fetch = vi.fn();
+// Mock fetch globally - replaces global fetch with our mock function
+// This runs ONCE when the file loads and stays active for all tests
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 describe('Task API', () => {
   beforeEach(() => {
+    // Clear mock call history before each test
+    // NOTE: This does NOT remove the stub - fetch is still mocked
+    // It only resets: call count, arguments, and return values
+    // This ensures each test starts with a clean slate
     vi.clearAllMocks();
   });
 
   it('should fetch tasks', async () => {
-    const mockTasks = [
-      { id: 1, title: 'Test Task', completed: false, userId: 1 },
-    ];
+    const mockTasks = [{ id: 1, title: 'Test Task', completed: false, userId: 1 }];
 
-    (global.fetch as any).mockResolvedValueOnce({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => mockTasks,
+      json: () => Promise.resolve(mockTasks),
     });
 
     const tasks = await fetchTasks();
 
-    expect(fetch).toHaveBeenCalledWith(
-      'https://jsonplaceholder.typicode.com/todos?_limit=10'
-    );
+    expect(mockFetch).toHaveBeenCalledWith('https://jsonplaceholder.typicode.com/todos?_limit=10');
     expect(tasks).toEqual(mockTasks);
   });
 
   it('should handle fetch errors', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
     });
@@ -1555,9 +1670,9 @@ describe('Task API', () => {
     const newTask = { title: 'New Task', completed: false, userId: 1 };
     const createdTask = { id: 1, ...newTask };
 
-    (global.fetch as any).mockResolvedValueOnce({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => createdTask,
+      json: () => Promise.resolve(createdTask),
     });
 
     const result = await createTask(newTask);
@@ -1569,9 +1684,9 @@ describe('Task API', () => {
     const updates = { completed: true };
     const updatedTask = { id: 1, title: 'Test', completed: true, userId: 1 };
 
-    (global.fetch as any).mockResolvedValueOnce({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => updatedTask,
+      json: () => Promise.resolve(updatedTask),
     });
 
     const result = await updateTask(1, updates);
@@ -1580,68 +1695,34 @@ describe('Task API', () => {
   });
 
   it('should delete a task', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
     });
 
     await deleteTask(1);
 
-    expect(fetch).toHaveBeenCalledWith(
-      'https://jsonplaceholder.typicode.com/todos/1',
-      { method: 'DELETE' }
-    );
-  });
-});
-```
-
-**Create `src/components/TaskCard.test.ts`:**
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
-import './TaskCard';
-
-describe('TaskCard Component', () => {
-  let container: HTMLDivElement;
-
-  beforeEach(() => {
-    container = document.createElement('div');
-    document.body.appendChild(container);
-  });
-
-  it('should render task title and description', () => {
-    const taskCard = document.createElement('task-card');
-    taskCard.setAttribute('title', 'Test Task');
-    taskCard.setAttribute('description', 'Test Description');
-    container.appendChild(taskCard);
-
-    const shadow = taskCard.shadowRoot;
-    expect(shadow?.querySelector('.task-title')?.textContent).toBe('Test Task');
-    expect(shadow?.querySelector('.task-description')?.textContent).toBe('Test Description');
-  });
-
-  it('should show completed state', () => {
-    const taskCard = document.createElement('task-card');
-    taskCard.setAttribute('title', 'Completed Task');
-    taskCard.setAttribute('completed', '');
-    container.appendChild(taskCard);
-
-    const title = taskCard.shadowRoot?.querySelector('.task-title') as HTMLElement;
-    expect(title.style.textDecoration).toBe('line-through');
-  });
-
-  it('should emit toggle-complete event', (done) => {
-    const taskCard = document.createElement('task-card');
-    taskCard.setAttribute('title', 'Test Task');
-    container.appendChild(taskCard);
-
-    taskCard.addEventListener('toggle-complete', () => {
-      done();
+    expect(mockFetch).toHaveBeenCalledWith('https://jsonplaceholder.typicode.com/todos/1', {
+      method: 'DELETE',
     });
-
-    const completeBtn = taskCard.shadowRoot?.querySelector('.btn-complete') as HTMLButtonElement;
-    completeBtn.click();
   });
 });
 ```
+
+> **Mocking `fetch` with Vitest:**
+>
+> We use `vi.stubGlobal()` to mock the global `fetch` function:
+> ```typescript
+> const mockFetch = vi.fn();
+> vi.stubGlobal('fetch', mockFetch);
+> ```
+>
+> **Why this approach:**
+> - Type-safe - no need for `global` or `globalThis` TypeScript issues
+> - Vitest-specific - uses the official Vitest mocking API
+> - Automatically cleaned up between tests
+> - Clear and explicit about what's being mocked
+>
+> Each test configures the mock's return value with `mockFetch.mockResolvedValueOnce()` to simulate different API responses.
 
 **Update `package.json` scripts:**
 ```json
@@ -1658,7 +1739,171 @@ describe('TaskCard Component', () => {
 ```bash
 npm run test
 npm run test:ui  # Opens a nice UI
+
 ```
+**Create `src/components/TaskCard.test.ts`:**
+
+> **Testing Shadow DOM Components:**
+>
+> Our `TaskCard` uses Shadow DOM for style encapsulation. This means Testing Library's standard queries (`getByText`, `getByRole`, etc.) **won't work** because they only search the Light DOM.
+>
+> **Why this happens:**
+> - Testing Library uses `document.querySelector()` internally
+> - Shadow DOM creates an encapsulation boundary
+> - Elements inside Shadow DOM are invisible to external queries
+>
+> **The solution:**
+> ```typescript
+> // FAIL: This won't work - Testing Library can't see inside Shadow DOM
+> const title = screen.getByText('Test Task');
+>
+> // SUCCESS: This works - manually access shadowRoot
+> const shadow = taskCard.shadowRoot;
+> const title = shadow?.querySelector('.task-title');
+> ```
+>
+> **Trade-offs:**
+> - **Pro:** Shadow DOM provides true style encapsulation
+> - **Con:** Requires manual `shadowRoot.querySelector()` in tests
+> - **Con:** Can't use Testing Library's semantic queries (`getByRole`, etc.)
+>
+> **Alternative:** If you need Testing Library's full query capabilities, consider using Light DOM for your components (see the note in Step 3 about Light DOM alternatives).
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import './TaskCard';
+
+describe('TaskCard Component', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  describe('Rendering', () => {
+    it('should render task title and description', () => {
+      const taskCard = document.createElement('task-card');
+      taskCard.setAttribute('title', 'Test Task');
+      taskCard.setAttribute('description', 'Test Description');
+      container.appendChild(taskCard);
+
+      const shadow = taskCard.shadowRoot;
+      expect(shadow?.querySelector('.task-title')?.textContent).toBe('Test Task');
+      expect(shadow?.querySelector('.task-description')?.textContent).toBe('Test Description');
+    });
+
+    it('should show completed state', () => {
+      const taskCard = document.createElement('task-card');
+      taskCard.setAttribute('title', 'Completed Task');
+      taskCard.setAttribute('completed', '');
+      container.appendChild(taskCard);
+
+      // Check that the completed attribute is set
+      expect(taskCard.hasAttribute('completed')).toBe(true);
+
+      // Check that the component renders with completed styling in the shadow DOM
+      const styleElement = taskCard.shadowRoot?.querySelector('style');
+      expect(styleElement?.textContent).toContain('text-decoration: line-through');
+
+      // Verify the complete button shows 'Undo' text
+      const completeBtn = taskCard.shadowRoot?.querySelector('.btn-complete');
+      expect(completeBtn?.textContent).toBe('Undo');
+    });
+  });
+
+  describe('User Interactions', () => {
+    it('should emit toggle-complete event when user clicks complete button', async () => {
+      const user = userEvent.setup();
+      const taskCard = document.createElement('task-card');
+      taskCard.setAttribute('title', 'Test Task');
+      container.appendChild(taskCard);
+
+      let eventFired = false;
+      taskCard.addEventListener('toggle-complete', () => {
+        eventFired = true;
+      });
+
+      const completeBtn = taskCard.shadowRoot?.querySelector('.btn-complete') as HTMLButtonElement;
+      await user.click(completeBtn);
+
+      expect(eventFired).toBe(true);
+    });
+
+    it('should emit delete-task event when user clicks delete button', async () => {
+      const user = userEvent.setup();
+      const taskCard = document.createElement('task-card');
+      taskCard.setAttribute('title', 'Test Task');
+      container.appendChild(taskCard);
+
+      let eventFired = false;
+      taskCard.addEventListener('delete-task', () => {
+        eventFired = true;
+      });
+
+      const deleteBtn = taskCard.shadowRoot?.querySelector('.btn-delete') as HTMLButtonElement;
+      await user.click(deleteBtn);
+
+      expect(eventFired).toBe(true);
+    });
+  });
+});
+
+```
+
+> **Test cleanup explained:**
+>
+> Notice the `afterEach(() => container.remove())` hook. This ensures test isolation by cleaning up the container element created in `beforeEach()`:
+>
+> ```typescript
+> beforeEach(() => {
+>   container = document.createElement('div');
+>   document.body.appendChild(container); // Add to DOM
+> });
+>
+> afterEach(() => {
+>   container.remove(); // Remove from DOM
+> });
+> ```
+>
+> **Why this matters:**
+> - Each test starts with a fresh, empty container
+> - DOM elements from one test don't leak into the next
+> - Tests can run in any order without affecting each other
+> - Vitest creates a fresh jsdom environment for each test file, so cross-file pollution isn't an issue
+>
+> This is the standard cleanup pattern for vanilla DOM testing. No global setup file needed!
+
+> **Why use `userEvent` for interactions?**
+>
+> Notice the "User Interactions" tests use `userEvent.click()` instead of the direct `.click()` method:
+>
+> ```typescript
+> // Direct method (simple but less realistic)
+> button.click();
+> // Only fires: click event
+>
+> // userEvent (realistic user simulation)
+> await user.click(button);
+> // Fires in sequence: mouseover → mousedown → focus → mouseup → click
+> // Just like a real user interaction!
+> ```
+>
+> **Key benefits:**
+> - Simulates the full event sequence a real user would trigger
+> - More likely to catch bugs related to focus, hover states, or event ordering
+> - Tests are async (`await`) because real interactions take time
+> - Must call `userEvent.setup()` to create a user instance per test
+>
+> For simple rendering tests, direct assertions are fine. For user interactions, `userEvent` provides more confidence.
+```
+
+
 
 ---
 
