@@ -328,14 +328,16 @@ Visit http://localhost:5173 - you should see the styled content:
 
 **What you'll learn:** Create reusable, encapsulated custom HTML elements using the native Web Components API.
 
+**Documentation:** [MDN Web Components Guide](https://developer.mozilla.org/en-US/docs/Web/API/Web_components)
+
 > **Understanding the Web Components API**
 >
 > Web Components are a suite of **native browser features** (not a library or framework!) that let you create reusable custom elements:
 >
 > **Key Browser APIs:**
 > - `customElements` - Global registry for custom elements (also available as `window.customElements`)
-> - `HTMLElement` - Base class that all custom elements extend
-> - `ShadowRoot` - Encapsulated DOM tree for style isolation
+> - `HTMLElement` - Base class that all custom elements extend (also `window.HTMLElement`)
+> - `ShadowRoot` - Interface for the shadow DOM tree (also `window.ShadowRoot`)
 >
 > **No imports needed!** These APIs are built into modern browsers:
 > ```typescript
@@ -349,6 +351,101 @@ Visit http://localhost:5173 - you should see the styled content:
 >   }
 > }
 > ```
+>
+> **Understanding Shadow DOM:**
+>
+> Shadow DOM creates an **isolated DOM tree** attached to an element. Think of it as a separate mini-document that's hidden from the main page:
+>
+> ```typescript
+> class MyElement extends HTMLElement {
+>   constructor() {
+>     super();
+>     // Create a shadow root - this is the "container" for your isolated DOM
+>     this.attachShadow({ mode: 'open' });
+>     // Now this.shadowRoot exists and can contain HTML
+>   }
+> }
+> ```
+>
+> **Why use Shadow DOM?**
+> - **Style encapsulation** - CSS inside shadow DOM won't leak out; CSS from outside won't leak in
+> - **DOM encapsulation** - Internal structure is hidden from external JavaScript queries
+> - **Prevents conflicts** - No ID collisions, no accidental style overrides
+>
+> **Shadow DOM modes:**
+> - **`mode: 'open'`** (recommended) - JavaScript outside can access the shadow root
+>   ```typescript
+>   const element = document.querySelector('my-element');
+>   element.shadowRoot.querySelector('.internal-class'); // ✅ Works
+>   ```
+> - **`mode: 'closed'`** - Shadow root is completely private, `element.shadowRoot` returns `null`
+>   ```typescript
+>   const element = document.querySelector('my-element');
+>   element.shadowRoot; // ❌ Returns null
+>   ```
+>   Note: `closed` mode offers little security benefit (can still be bypassed) and makes debugging harder. **Use `open` mode** unless you have a specific reason not to.
+>
+> **Example - Light DOM vs Shadow DOM:**
+> ```typescript
+> // Without Shadow DOM (Light DOM)
+> class LightElement extends HTMLElement {
+>   connectedCallback() {
+>     this.innerHTML = '<div class="box">I am affected by external CSS</div>';
+>   }
+> }
+>
+> // With Shadow DOM
+> class ShadowElement extends HTMLElement {
+>   constructor() {
+>     super();
+>     this.attachShadow({ mode: 'open' });
+>   }
+>
+>   connectedCallback() {
+>     this.shadowRoot.innerHTML = `
+>       <style>
+>         .box { color: blue; padding: 10px; }
+>       </style>
+>       <div class="box">I am isolated from external CSS</div>
+>     `;
+>   }
+> }
+> ```
+>
+> **How to work with Shadow DOM:**
+> ```typescript
+> class TaskCard extends HTMLElement {
+>   private shadow: ShadowRoot;
+>
+>   constructor() {
+>     super();
+>     // Create shadow root in constructor
+>     this.shadow = this.attachShadow({ mode: 'open' });
+>   }
+>
+>   connectedCallback() {
+>     // Add content to shadow root (not to this.innerHTML!)
+>     this.shadow.innerHTML = `
+>       <style>
+>         /* Styles here only affect this component */
+>         p { color: red; }
+>       </style>
+>       <p>Hello from Shadow DOM!</p>
+>     `;
+>
+>     // Query inside shadow DOM
+>     const paragraph = this.shadow.querySelector('p');
+>   }
+> }
+> ```
+>
+> **Key differences:**
+> | Operation | Light DOM (no shadow) | Shadow DOM |
+> |-----------|----------------------|------------|
+> | Set content | `this.innerHTML = ...` | `this.shadowRoot.innerHTML = ...` |
+> | Query elements | `this.querySelector(...)` | `this.shadowRoot.querySelector(...)` |
+> | CSS scope | Global (affected by page styles) | Isolated (only internal styles apply) |
+> | Access from outside | ✅ Easy with `querySelector` | ⚠️ Requires `element.shadowRoot.querySelector` |
 >
 > **Web Component Lifecycle Callbacks:**
 >
