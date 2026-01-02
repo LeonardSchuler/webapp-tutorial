@@ -2,14 +2,14 @@
 ## Building a Task Manager PWA with Vite + TypeScript
 
 This tutorial will teach you these technologies by building a real application:
-- ✅ Vite (Dev server + build)
-- ✅ ESLint + Prettier (Code quality)
-- ✅ Tailwind CSS (Styling)
-- ✅ Navigo (Client routing)
-- ✅ Fetch API (HTTP requests)
-- ✅ Vitest + Testing Library (Testing)
-- ✅ Web Components (UI components)
-- ✅ Workbox (PWA support)
+- Vite (Dev server + build)
+- ESLint + Prettier (Code quality)
+- Tailwind CSS (Styling)
+- Navigo (Client routing)
+- Fetch API (HTTP requests)
+- Vitest + Testing Library (Testing)
+- Web Components (UI components)
+- Workbox (PWA support)
 
 ## Tutorial Roadmap
 
@@ -24,7 +24,7 @@ Phase 1: Setup & Configuration
 Phase 2: Core Features
 ├── Step 3: Web Components (TaskCard, AppHeader)
 ├── Step 4: Navigo Routing + State Management
-└── Step 5: Fetch API Integration
+└── Step 5: Fetch API & Data Caching
 
 Phase 3: Quality & PWA
 ├── Step 6: Vitest + Testing Library
@@ -1191,9 +1191,41 @@ Navigate between pages using the header links! Notice:
 
 ---
 
-### Step 5: Fetch API
+### Step 5: Fetch API & Data Caching
 
-**What you'll learn:** Make HTTP requests to APIs.
+**What you'll learn:** Make HTTP requests to APIs, implement client-side caching, and handle optimistic updates with rollback.
+
+> **Understanding the Fetch API:**
+>
+> The Fetch API is a modern, promise-based interface for making HTTP requests in the browser. It provides a powerful way to communicate with servers.
+>
+> **Basic Fetch Flow:**
+> 1. Call `fetch(url, options)` - Returns a Promise
+> 2. First `.then()` receives the Response object (headers, status, etc.)
+> 3. Call `response.json()` to parse the body - Returns another Promise
+> 4. Second `.then()` receives the parsed data
+> 5. Use `try/catch` with `async/await` for cleaner error handling
+>
+> **Key concepts we'll implement:**
+> - **API Layer** - Separate module for all HTTP requests (clean architecture)
+> - **Type Safety** - TypeScript interfaces for API responses
+> - **Error Handling** - Graceful failure with user feedback
+> - **Client-Side Caching** - Store fetched data in memory to avoid unnecessary requests
+> - **Optimistic Updates** - Update UI immediately, sync with server in background
+> - **Rollback on Failure** - Revert UI changes if server request fails
+>
+> **Architecture Pattern: Optimistic UI**
+>
+> Instead of showing loading spinners for every user action, we'll implement optimistic updates:
+> ```
+> Traditional:                    Optimistic:
+> 1. User clicks "Complete"       1. User clicks "Complete"
+> 2. Show loading spinner         2. Update UI immediately ✅
+> 3. Wait for server...           3. Send request in background
+> 4. Update UI on success         4. If fails → rollback UI
+> ```
+>
+> This makes the app feel instant and responsive, even on slow connections!
 
 **Create `src/api/tasks.ts`:**
 ```typescript
@@ -1212,7 +1244,7 @@ export async function fetchTasks(): Promise<Task[]> {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    const tasks: Task[] = await response.json();
+    const tasks = (await response.json()) as Task[];
     return tasks;
   } catch (error) {
     console.error('Failed to fetch tasks:', error);
@@ -1228,7 +1260,7 @@ export async function createTask(task: Omit<Task, 'id'>): Promise<Task> {
     },
     body: JSON.stringify(task),
   });
-  return response.json();
+  return (await response.json()) as Task;
 }
 
 export async function updateTask(id: number, updates: Partial<Task>): Promise<Task> {
@@ -1239,7 +1271,7 @@ export async function updateTask(id: number, updates: Partial<Task>): Promise<Ta
     },
     body: JSON.stringify(updates),
   });
-  return response.json();
+  return (await response.json()) as Task;
 }
 
 export async function deleteTask(id: number): Promise<void> {
@@ -1253,65 +1285,21 @@ export async function deleteTask(id: number): Promise<void> {
 ```typescript
 import type { Task } from './api/tasks';
 
-// Minimal state management - keeps tasks in memory
-class TaskStore {
-  private tasks: Task[] = [];
-  private listeners: Array<() => void> = [];
-
-  getTasks(): Task[] {
-    return this.tasks;
-  }
-
-  setTasks(tasks: Task[]): void {
-    this.tasks = tasks;
-    this.notify();
-  }
-
-  updateTask(id: number, updates: Partial<Task>): void {
-    const index = this.tasks.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      this.tasks[index] = { ...this.tasks[index], ...updates };
-      this.notify();
-    }
-  }
-
-  removeTask(id: number): number {
-    const index = this.tasks.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      this.tasks = this.tasks.filter((t) => t.id !== id);
-      this.notify();
-    }
-    return index; // Return original index for potential rollback
-  }
-
-  insertTask(task: Task, index: number): void {
-    this.tasks.splice(index, 0, task);
-    this.notify();
-  }
-
-  subscribe(listener: () => void): () => void {
-    this.listeners.push(listener);
-    return () => {
-      this.listeners = this.listeners.filter((l) => l !== listener);
-    };
-  }
-
-  private notify(): void {
-    this.listeners.forEach((listener) => listener());
-  }
-}
-
-export const taskStore = new TaskStore();
+// Simple state container - keeps tasks in memory
+export const taskStore = {
+  tasks: [] as Task[],
+  isLoaded: false,
+};
 ```
 
 > **Architecture Note:**
 >
-> This simple store pattern:
+> This minimal store pattern:
 > - Centralizes task state (single source of truth)
-> - Provides reactive updates via subscriptions
-> - Avoids unnecessary refetches
+> - Uses a simple object to track tasks and loading state
+> - The `isLoaded` flag prevents unnecessary API refetches
 >
-> In production, consider using signals, Zustand, or similar libraries.
+> For more complex apps, consider using reactive state management libraries like signals, Zustand, or similar.
 
 **Update `src/router.ts` to use the API and store:**
 ```typescript
@@ -1320,9 +1308,6 @@ import { fetchTasks, updateTask, deleteTask, type Task } from './api/tasks';
 import { taskStore } from './store';
 
 ...
-
-// Track active subscriptions for cleanup
-const activeSubscriptions = new Set<() => void>();
 
 // Replace the renderTasks function:
 function renderTasks(appElement: HTMLElement) {
@@ -1344,18 +1329,11 @@ function renderTasks(appElement: HTMLElement) {
     void loadTasks(appElement);
   });
 
-  // Subscribe to store changes
-  const unsubscribe = taskStore.subscribe(() => {
-    renderTaskList(appElement);
-  });
-
-  // Track for cleanup on route change
-  activeSubscriptions.add(unsubscribe);
-
-  // Initial load
-  if (taskStore.getTasks().length === 0) {
+  if (!taskStore.isLoaded) {
+    console.log('Loading tasks from API');
     void loadTasks(appElement);
   } else {
+    console.log('Using cached tasks');
     renderTaskList(appElement);
   }
 }
@@ -1364,8 +1342,12 @@ async function loadTasks(appElement: HTMLElement) {
   const taskList = appElement.querySelector('#task-list')!;
 
   try {
+    console.log('Fetching tasks from API...');
     const tasks = await fetchTasks();
-    taskStore.setTasks(tasks);
+    console.log('Fetched tasks:', tasks.length);
+    taskStore.tasks = tasks;
+    taskStore.isLoaded = true;
+    renderTaskList(appElement);
   } catch {
     taskList.innerHTML = '<p class="text-red-600">Failed to load tasks. Please try again.</p>';
   }
@@ -1373,7 +1355,7 @@ async function loadTasks(appElement: HTMLElement) {
 
 function renderTaskList(appElement: HTMLElement) {
   const taskList = appElement.querySelector('#task-list')!;
-  const tasks = taskStore.getTasks();
+  const tasks = taskStore.tasks;
 
   if (tasks.length === 0) {
     taskList.innerHTML = '<p class="text-gray-600">No tasks found.</p>';
@@ -1397,14 +1379,22 @@ function renderTaskList(appElement: HTMLElement) {
 
         try {
           // Optimistic update - update UI immediately
-          taskStore.updateTask(task.id, { completed: !task.completed });
+          const index = taskStore.tasks.findIndex((t) => t.id === task.id);
+          if (index !== -1) {
+            taskStore.tasks[index] = { ...taskStore.tasks[index], completed: !task.completed };
+          }
+          renderTaskList(appElement);
 
           // Then sync with server
           await updateTask(task.id, { completed: !task.completed });
         } catch (error) {
           console.error('Failed to update task:', error);
           // Rollback on failure
-          taskStore.updateTask(task.id, { completed: previousState });
+          const index = taskStore.tasks.findIndex((t) => t.id === task.id);
+          if (index !== -1) {
+            taskStore.tasks[index] = { ...taskStore.tasks[index], completed: previousState };
+          }
+          renderTaskList(appElement);
           alert('Failed to update task. Please try again.');
         }
       })();
@@ -1414,11 +1404,12 @@ function renderTaskList(appElement: HTMLElement) {
     taskCard.addEventListener('delete-task', () => {
       void (async () => {
         const taskCopy = { ...task };
-        let originalIndex: number = -1;
+        const originalIndex = taskStore.tasks.findIndex((t) => t.id === task.id);
 
         try {
-          // Optimistic delete - remove from UI immediately, save index
-          originalIndex = taskStore.removeTask(task.id);
+          // Optimistic delete - remove from UI immediately
+          taskStore.tasks = taskStore.tasks.filter((t) => t.id !== task.id);
+          renderTaskList(appElement);
 
           // Then sync with server
           await deleteTask(task.id);
@@ -1426,12 +1417,12 @@ function renderTaskList(appElement: HTMLElement) {
           console.error('Failed to delete task:', error);
           // Rollback on failure - restore the task at its original position
           if (originalIndex >= 0) {
-            taskStore.insertTask(taskCopy, originalIndex);
+            taskStore.tasks.splice(originalIndex, 0, taskCopy);
           } else {
             // Fallback: append at end if index was lost
-            const currentTasks = taskStore.getTasks();
-            taskStore.setTasks([...currentTasks, taskCopy]);
+            taskStore.tasks = [...taskStore.tasks, taskCopy];
           }
+          renderTaskList(appElement);
           alert('Failed to delete task. Please try again.');
         }
       })();
@@ -1454,11 +1445,12 @@ function renderTaskList(appElement: HTMLElement) {
 >
 > Notice the pattern:
 > 1. Save current state (including position for deletes)
-> 2. Update UI immediately (optimistic)
-> 3. Sync with server
-> 4. If server fails → rollback to saved state
+> 2. Update UI immediately (optimistic) by modifying `taskStore.tasks` directly
+> 3. Call `renderTaskList()` to update the UI
+> 4. Sync with server
+> 5. If server fails → rollback to saved state and re-render
 >
-> **Ordering preservation:** When rolling back a delete, we restore the task at its original index to maintain list order. This requires the store to return and accept indices.
+> **Ordering preservation:** When rolling back a delete, we restore the task at its original index to maintain list order using `splice()`.
 >
 > This gives users instant feedback while maintaining data consistency. Production apps should also consider:
 > - Retry logic with exponential backoff
@@ -1467,12 +1459,13 @@ function renderTaskList(appElement: HTMLElement) {
 
 > **Performance Note:**
 >
-> Notice we're now using the store to:
-> - Cache tasks in memory (no unnecessary refetches)
-> - Update local state optimistically after mutations
-> - Automatically re-render via subscriptions
+> The store provides simple caching:
+> - Tasks are kept in memory via `taskStore.tasks`
+> - The `isLoaded` flag prevents unnecessary API refetches
+> - When navigating away from /tasks and back, cached data is used
+> - The "Refresh" button allows manual refetching when needed
 >
-> This is much more efficient than refetching the entire list after every change.
+> For production apps with more complex state, consider reactive solutions (signals, Zustand) that automatically trigger re-renders on state changes.
 
 **Test it:**
 ```bash
@@ -1823,28 +1816,31 @@ Try going offline and refreshing - it still works!
 Congratulations! 🎉 You've built a complete Task Manager PWA from scratch and learned:
 
 ### Phase 0: Project Setup
-0. ✅ **Vite Project Scaffolding** - Created project with `npm create vite@latest`
+**Vite Project Scaffolding** - Created project with `npm create vite@latest`
 
 ### Phase 1: Setup & Configuration
-1. ✅ **ESLint + Prettier** - Automated code quality and formatting with `npm init @eslint/config`
-2. ✅ **Tailwind CSS** - Utility-first styling with custom components
+**ESLint + Prettier** - Automated code quality and formatting with `npm init @eslint/config`
+
+**Tailwind CSS** - Utility-first styling with custom components
 
 ### Phase 2: Core Features
-3. ✅ **Web Components** - Reusable, encapsulated UI elements with Shadow DOM
-4. ✅ **Navigo** - Client-side routing for SPAs with cleanup hooks
-5. ✅ **Fetch API** - HTTP requests with proper error handling and optimistic updates
-6. ✅ **State Management** - Simple store pattern with subscriptions
+**Web Components** - Reusable, encapsulated UI elements with Shadow DOM
+
+**Navigo** - Client-side routing for SPAs with cleanup hooks
+
+**Fetch API & Data Caching** - HTTP requests, client-side caching, and optimistic updates with rollback
 
 ### Phase 3: Quality & PWA
-7. ✅ **Vitest + Testing Library** - Unit and component testing with mocks
-8. ✅ **Workbox** - Service workers, offline support, PWA features
+**Vitest + Testing Library** - Unit and component testing with mocks
+
+**Workbox** - Service workers, offline support, PWA features
 
 ### Bonus: Production-Ready Patterns
-- ✅ Memory leak prevention with subscription cleanup
-- ✅ Optimistic updates with rollback on failure
-- ✅ Ordering preservation on data mutations
-- ✅ Shadow DOM vs global styles architecture
-- ✅ Web Component lifecycle management
+- Optimistic updates with rollback on failure
+- Ordering preservation on data mutations
+- Client-side data caching to reduce API calls
+- Shadow DOM vs global styles architecture
+- Web Component lifecycle management
 
 ## Next Steps
 
