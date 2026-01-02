@@ -501,11 +501,73 @@ Visit http://localhost:5173 - you should see the styled content:
 >
 > Tailwind utilities **cannot cross Shadow DOM boundaries**. Web Components with Shadow DOM are isolated from global styles, which is by design for encapsulation.
 >
-> **Our approach:**
+> **Design decision for this tutorial:**
 > - Page-level layouts and routing → Use Tailwind utilities
-> - Web Components (Shadow DOM) → Use inline `<style>` tags
+> - Web Components (Shadow DOM) → Use inline `<style>` tags for full encapsulation
 >
-> **Optional: Share design tokens** using CSS custom properties:
+> **Alternative: Light DOM Web Components with Tailwind**
+>
+> If you don't need style encapsulation, you can skip Shadow DOM and use Tailwind directly:
+> ```typescript
+> export class TaskCard extends HTMLElement {
+> 
+>   connectedCallback() {
+>     const title = this.getAttribute('title') || 'Untitled';
+>     const description = this.getAttribute('description') || '';
+>     const completed = this.hasAttribute('completed');
+> 
+>     this.innerHTML = `
+>       <div class="bg-white rounded-lg shadow-md p-6 mb-4 border-l-4 ${completed ? 'border-green-500' : 'border-blue-500'}">
+>         <h3 class="text-xl font-bold mb-2 ${completed ? 'line-through text-gray-500' : 'text-gray-900'}">${title}</h3>
+>         <p class="text-gray-600 mb-4">${description}</p>
+>         <div class="flex gap-2">
+>           <button class="btn-complete px-4 py-2 rounded-lg font-semibold transition-colors duration-200 ${completed ? 'bg-gray-200 text-gray-800 hover:bg-gray-300' : 'bg-green-600 text-white hover:bg-green-700'}">
+>             ${completed ? 'Undo' : 'Complete'}
+>           </button>
+>           <button class="btn-delete px-4 py-2 rounded-lg font-semibold transition-colors duration-200 bg-red-600 text-white hover:bg-red-700">
+>             Delete
+>           </button>
+>         </div>
+>       </div>
+>     `;
+> 
+>     this.setupEventListeners();
+>   }
+> 
+>   private setupEventListeners() {
+>     this.querySelector('.btn-complete')?.addEventListener('click', () => {
+>       // Dispatch custom events that bubble through Shadow DOM (composed: true)
+>       this.dispatchEvent(new CustomEvent('toggle-complete', {
+>         bubbles: true,
+>         composed: true
+>       }));
+>     });
+> 
+>     this.querySelector('.btn-delete')?.addEventListener('click', () => {
+>       this.dispatchEvent(new CustomEvent('delete-task', {
+>         bubbles: true,
+>         composed: true
+>       }));
+>     });
+>   }
+> }
+> 
+> customElements.define('task-card', TaskCard);
+> ```
+> Note: You might need to restart your development server (`npm run dev`) when switching TaskCard to Light DOM.
+>
+> **Trade-offs:**
+> - ✅ Can use Tailwind utilities directly
+> - ✅ Simpler code (no shadow root management)
+> - ❌ No style encapsulation (global CSS can affect your component)
+> - ❌ Your component CSS can leak out and affect the page
+> - ❌ Class name collisions possible
+>
+> **When to use each approach:**
+> - **Shadow DOM**: Reusable components meant for sharing/libraries, need strong isolation
+> - **Light DOM**: App-specific components, want consistent styling with Tailwind
+>
+> **Optional: Share design tokens across Shadow DOM** using CSS custom properties:
 > ```css
 > /* In your global style.css */
 > :root {
@@ -514,6 +576,8 @@ Visit http://localhost:5173 - you should see the styled content:
 > }
 > ```
 > Then reference them inside Shadow DOM: `color: var(--color-primary);`
+>
+> CSS custom properties (variables) **do** cross Shadow DOM boundaries, making them perfect for theming!
 
 **Create `src/components/TaskCard.ts`:**
 ```typescript
